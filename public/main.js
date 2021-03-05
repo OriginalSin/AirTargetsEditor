@@ -16640,7 +16640,7 @@
       // [50.14874640066278,18.676757812500004],
       // 'T',[49.866316729538674,25.0927734375]], {
 
-      var pathOne = leafletSrc.curve(['M', latlngs[0], 'Q', [latlngs[2][0] - 1, latlngs[2][1]], latlngs[1], 'T', latlngs[3]], {
+      var pathOne = leafletSrc.curve(['M', latlngs[0], 'Q', [latlngs[2][0] - 1, latlngs[2][1] + 2], latlngs[1], 'T', latlngs[3]], {
         animate: 3000 // ,
         // renderer: canvasRenderer
 

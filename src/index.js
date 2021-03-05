@@ -35,7 +35,7 @@ customPane.style.zIndex = 399; // put just behind the standard overlay pane whic
 					   // 'T',[49.866316729538674,25.0927734375]], {
 var pathOne = L.curve([
 	'M', latlngs[0],
-	'Q', [latlngs[2][0] - 1, latlngs[2][1]], latlngs[1],
+	'Q', [latlngs[2][0] - 1, latlngs[2][1]+2], latlngs[1],
 	'T', latlngs[3]
    ], {
 	   animate: 3000
