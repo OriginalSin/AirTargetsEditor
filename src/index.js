@@ -54,12 +54,29 @@ window.addEventListener('load', async () => {
 		}
 		const curveArr = ['M', arr[0]];
 		for (let i = 0, len = arr.length - 1; i < len; i++) {
-			let p = arr[i];
-			let p1 = arr[i + 1];
+			
+			let p1 = arr[i];
+			let p2 = arr[i + 1];
+/*			
+			let p0 = i===0? 
+				[p1[0]-0.1*(p2[0]-p1[0]), p1[1]-0.1*(p2[1]-p1[1])]
+				:
+				arr[i-1];
+			let d2 = i===len-1? 
+				[p2[0]-p1[0], p2[1]-p1[1]]
+				:
+			 	[arr[i+2][0]-p1[0], arr[i+2][1]-p1[1]];
+*/
+			let p0 = i===0? p1 : arr[i-1];
+			let p3 = i===len-1? p2 : arr[i+2];
 			curveArr.push('C');
-			curveArr.push([p[0],	p[1]	+ 2]);
-			curveArr.push([p1[0],	p1[1]	- 2]);
-			curveArr.push(p1);
+			curveArr.push([p1[0]+0.1*(p2[0]-p0[0]), p1[1]+0.1*(p2[1]-p0[1])]);
+			curveArr.push(
+				[
+					p2[0]-0.1*(p3[0]-p1[0]),
+					p2[1]-0.1*(p3[1]-p1[1])
+				]);
+			curveArr.push(p2);
 		}
 
 		pathOne = L.curve(curveArr, {
