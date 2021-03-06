@@ -40,24 +40,37 @@ window.addEventListener('load', async () => {
 	map.gmxDrawing.add(L.polyline(latlngs), {
 		lineStyle: {dashArray: [5, 5], color: 'red'},
 		pointStyle: {size:20, fillColor: 'red'}
+	}).on('edit', ev => {
+		let it = ev.object;
+		console.log('kkkk', ev);
+		let arr = it.rings[0].ring._getLatLngsArr().map(p => [p.lat, p.lng]);
+		refreshCurves(arr);
 	});
-	const curveArr = ['M', latlngs[0]];
-	for (let i = 0, len = latlngs.length - 1; i < len; i++) {
-		let p = latlngs[i];
-		let p1 = latlngs[i + 1];
-		curveArr.push('C');
-		curveArr.push([p[0],	p[1]	+ 2]);
-		curveArr.push([p1[0],	p1[1]	- 2]);
-		curveArr.push(p1);
-	}
 
-	const pathOne = L.curve(curveArr, {
-	   dashArray: '5',
-	   animate: {duration: 3000, iterations: Infinity, delay: 1000}
-	   // ,
-	   // renderer: canvasRenderer
-	}).addTo(map);
-	
+	let pathOne;
+	function refreshCurves(arr) {
+		if (pathOne) {
+			map.removeLayer(pathOne);
+		}
+		const curveArr = ['M', arr[0]];
+		for (let i = 0, len = arr.length - 1; i < len; i++) {
+			let p = arr[i];
+			let p1 = arr[i + 1];
+			curveArr.push('C');
+			curveArr.push([p[0],	p[1]	+ 2]);
+			curveArr.push([p1[0],	p1[1]	- 2]);
+			curveArr.push(p1);
+		}
+
+		pathOne = L.curve(curveArr, {
+		   dashArray: '5',
+		   animate: {duration: 3000, iterations: Infinity, delay: 1000}
+		   // ,
+		   // renderer: canvasRenderer
+		}).addTo(map);
+	}
+	refreshCurves(CONTROL_POINTS);
+
 	let traceArr = [];
 	function traceCurves() {
 		pathOne.trace([0, 0.25, 0.75, 1]).forEach(i => {
