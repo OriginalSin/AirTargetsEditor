@@ -42,7 +42,7 @@ window.addEventListener('load', async () => {
 		pointStyle: {size:20, fillColor: 'red'}
 	}).on('edit', ev => {
 		let it = ev.object;
-		console.log('kkkk', ev);
+		// console.log('kkkk', ev);
 		let arr = it.rings[0].ring._getLatLngsArr().map(p => [p.lat, p.lng]);
 		refreshCurves(arr);
 	});
