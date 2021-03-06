@@ -4,7 +4,8 @@ import 'leaflet/dist/leaflet.css';
 import 'gmx-drawing/dist/gmxDrawing-src.js';
 import 'gmx-drawing/dist/gmxDrawing.css';
 
-import 'leaflet-curve/leaflet.curve.js';
+import './leaflet.curve.js';
+// import 'leaflet-curve/leaflet.curve.js';
 import {CONTROL_POINTS} from './const.js';
 
 window.addEventListener('load', async () => {
@@ -50,7 +51,35 @@ window.addEventListener('load', async () => {
 		curveArr.push(p1);
 	}
 
-	var pathOne = L.curve(curveArr).addTo(map);
+	const pathOne = L.curve(curveArr, {
+	   dashArray: '5',
+	   animate: {duration: 3000, iterations: Infinity, delay: 1000}
+	   // ,
+	   // renderer: canvasRenderer
+	}).addTo(map);
+	
+	let traceArr = [];
+	function traceCurves() {
+		pathOne.trace([0, 0.25, 0.75, 1]).forEach(i => {
+			let circle = L.circleMarker(i, {radius: 8, color: 'green'});
+			traceArr.push(circle);
+			circle.addTo(map);
+		});
+	}
+	L.DomEvent.on(playButton, 'click', (ev) => {
+		const cList = playButton.classList;
+		if (cList.contains('run')) {
+			cList.remove('run');
+			traceArr.forEach(it => {
+				map.removeLayer(it);
+			});
+			traceArr = [];
+		} else {
+			cList.add('run');
+			traceCurves();
+		}
+	});
+
 /*
 var customPane = map.createPane("customPane");
 var canvasRenderer = L.canvas({pane:"customPane"});
