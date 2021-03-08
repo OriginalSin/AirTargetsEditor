@@ -17118,26 +17118,29 @@
 
       leafletSrc.DomEvent.on(nodes.playButton, 'click', ev => {
         const target = nodes.targets._targets[nodes.targets._current];
-        target.setLatLng(target.options._blatlng);
-        const cList = ev.target.classList;
 
-        if (cList.contains('run')) {
-          disable(cList);
-        } else {
-          cList.add('run');
-          nodes.pauseButton.classList.remove('disabled');
-          traceCurves();
-          intId = setInterval(() => {
-            if (!nodes.pauseButton.classList.contains('run')) {
-              let latlng = traceArr.shift();
+        if (target) {
+          target.setLatLng(target.options._blatlng);
+          const cList = ev.target.classList;
 
-              if (latlng) {
-                target.setLatLng(latlng);
-              } else {
-                disable(cList);
+          if (cList.contains('run')) {
+            disable(cList);
+          } else {
+            cList.add('run');
+            nodes.pauseButton.classList.remove('disabled');
+            traceCurves();
+            intId = setInterval(() => {
+              if (!nodes.pauseButton.classList.contains('run')) {
+                let latlng = traceArr.shift();
+
+                if (latlng) {
+                  target.setLatLng(latlng);
+                } else {
+                  disable(cList);
+                }
               }
-            }
-          }, 100);
+            }, 100);
+          }
         }
       });
     });
