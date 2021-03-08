@@ -16,7 +16,7 @@ export const prepareNodes = () => {
 	targetsTitle.innerHTML = 'Targets';
 	const targetsNode = L.DomUtil.create('div', 'bodyTargets', leftMenu);
 	targetsNode._targets = [];
-	targetsNode._current;
+	targetsNode._current = undefined;
 
 	let ship = L.DomUtil.create('div', 'icon ship hidden', cont);
 	var myIcon = L.icon({
@@ -28,7 +28,7 @@ export const prepareNodes = () => {
 		[...pNode.childNodes].forEach((it, i) => {
 			it.classList[i === _current ? 'add' : 'remove']('current');
 		});
-	}
+	};
 
 	types.map(key => {
 		const bNode = L.DomUtil.create('div', '', lBody);
@@ -128,4 +128,4 @@ export const prepareNodes = () => {
 		targets: targetsNode
 	};
 
-}
+};

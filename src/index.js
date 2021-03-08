@@ -42,13 +42,34 @@ window.addEventListener('load', async () => {
 			let latLng = target.getLatLng();
 			first = [[latLng.lat, latLng.lng]];
 		}
-		const arr = first.concat(latlngs);
-		let p0 = arr[0];
-		const curveArr = ['M', p0];
-		for (let i = 0, len = arr.length - 1; i < len; i++) {
+		let arr = first.concat(latlngs);
+		let arrlast = arr[arr.length - 1];
+		arr.push(arrlast);
+		arr = [arr[0]].concat(arr);
+		let arr2 = [].concat(arr);
+		// пересчет arr (поднять или опустить точки)
+		let eps = 0.7;
+		for (let i = 1, len = arr2.length - 2; i < len; i++) {
+			let p0 = arr2[i - 1];
+			let p1 = arr2[i];
+			let p2 = arr2[i + 1];
+			let p3 = arr2[i + 2]; // i === len - 1 ? p2 : arr[i + 2];
+			if (p0[0] < p1[0] && p2[0] < p1[0]){ // точка максимума
+				arr[i][0] -= eps;
+			}
+			else if (p0[0] > p1[0] && p2[0] > p1[0]) { // точка минимума
+				arr[i][0] += eps;
+			}
+			else
+				arr[i][0] = arr2[i][0];
+		}
+		//L.polyline(arr).addTo(map);
+		const curveArr = ['M', arr[0]];
+		for (let i = 1, len = arr.length - 2; i < len; i++) {
+			let p0 = arr[i - 1];
 			let p1 = arr[i];
 			let p2 = arr[i + 1];
-			let p3 = i === len - 1 ? p2 : arr[i + 2];
+			let p3 = arr[i + 2]; // i === len - 1 ? p2 : arr[i + 2];
 			curveArr.push('C');
 			curveArr.push([p1[0] + AMPLITUDE * (p2[0] - p0[0]), p1[1] + AMPLITUDE * (p2[1] - p0[1])]);
 			curveArr.push([
@@ -56,7 +77,7 @@ window.addEventListener('load', async () => {
 				p2[1] - AMPLITUDE * (p3[1] - p1[1])
 			]);
 			curveArr.push(p2);
-			p0 = p1;
+			//p0 = p1;
 		}
 
 		pathOne = L.curve(curveArr, {
@@ -90,7 +111,7 @@ window.addEventListener('load', async () => {
 		nodes.pauseButton.classList.add('disabled');
 		cList.remove('run');
 		clearInterval(intId);
-	}
+	};
 
 	L.DomEvent.on(nodes.playButton, 'click', (ev) => {
 		const target = nodes.targets._targets[nodes.targets._current];
