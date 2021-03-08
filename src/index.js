@@ -86,7 +86,7 @@ window.addEventListener('load', async () => {
 
 	let intId;
 	const disable = (cList) => {
-		console.log('ddd');
+		// console.log('ddd');
 		nodes.pauseButton.classList.add('disabled');
 		cList.remove('run');
 		clearInterval(intId);
@@ -94,7 +94,7 @@ window.addEventListener('load', async () => {
 
 	L.DomEvent.on(nodes.playButton, 'click', (ev) => {
 		const target = nodes.targets._targets[nodes.targets._current];
-		// const target = nodes.targets._targets[nodes.targets._targets.length - 1];
+		target.setLatLng(target.options._blatlng);
 		const cList = ev.target.classList;
 		if (cList.contains('run')) {
 			disable(cList);
@@ -102,7 +102,6 @@ window.addEventListener('load', async () => {
 			cList.add('run');
 			nodes.pauseButton.classList.remove('disabled');
 			traceCurves();
-			// let time = 0;
 			intId = setInterval(() => {
 				if (!nodes.pauseButton.classList.contains('run')) {
 					let latlng = traceArr.shift();
@@ -110,10 +109,6 @@ window.addEventListener('load', async () => {
 						target.setLatLng(latlng);
 					} else {
 						disable(cList);
-						// console.log('ddd', latlng);
-						// nodes.pauseButton.classList.add('disable');
-						// cList.remove('run');
-						// clearInterval(intId);
 					}
 				}
 			}, 100);

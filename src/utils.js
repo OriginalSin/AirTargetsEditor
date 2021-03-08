@@ -79,8 +79,8 @@ export const prepareNodes = () => {
 
 				targetsNode._current = targetsNode._targets.length;
 				targetsNode._targets.push(
-					L.marker(latlng, {icon: myIcon, title: title, _node: node, draggable: true}).on('dragend', ev => {
-						console.log('drag', ev);
+					L.marker(latlng, {icon: myIcon, title: title, _blatlng: latlng, _node: node, draggable: true}).on('dragend', ev => {
+						// console.log('drag', ev);
 						let _node = ev.target.options._node;
 						_node.classList.remove('current');
 						setCurrent(_node);

@@ -16963,10 +16963,11 @@
           targetsNode._targets.push(leafletSrc.marker(latlng, {
             icon: myIcon,
             title: title,
+            _blatlng: latlng,
             _node: node,
             draggable: true
           }).on('dragend', ev => {
-            console.log('drag', ev);
+            // console.log('drag', ev);
             let _node = ev.target.options._node;
 
             _node.classList.remove('current');
@@ -17109,15 +17110,15 @@
       let intId;
 
       const disable = cList => {
-        console.log('ddd');
+        // console.log('ddd');
         nodes.pauseButton.classList.add('disabled');
         cList.remove('run');
         clearInterval(intId);
       };
 
       leafletSrc.DomEvent.on(nodes.playButton, 'click', ev => {
-        const target = nodes.targets._targets[nodes.targets._current]; // const target = nodes.targets._targets[nodes.targets._targets.length - 1];
-
+        const target = nodes.targets._targets[nodes.targets._current];
+        target.setLatLng(target.options._blatlng);
         const cList = ev.target.classList;
 
         if (cList.contains('run')) {
@@ -17125,8 +17126,7 @@
         } else {
           cList.add('run');
           nodes.pauseButton.classList.remove('disabled');
-          traceCurves(); // let time = 0;
-
+          traceCurves();
           intId = setInterval(() => {
             if (!nodes.pauseButton.classList.contains('run')) {
               let latlng = traceArr.shift();
@@ -17134,10 +17134,7 @@
               if (latlng) {
                 target.setLatLng(latlng);
               } else {
-                disable(cList); // console.log('ddd', latlng);
-                // nodes.pauseButton.classList.add('disable');
-                // cList.remove('run');
-                // clearInterval(intId);
+                disable(cList);
               }
             }
           }, 100);
