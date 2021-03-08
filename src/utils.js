@@ -33,16 +33,19 @@ export const prepareNodes = () => {
 	types.map(key => {
 		const bNode = L.DomUtil.create('div', '', lBody);
 		bNode.innerHTML = key;
+		bNode.title = 'Drag/Drop на карту';
 		L.DomEvent.on(bNode, 'mousedown', (ev) => {
 			ship.style.left = ev.clientX - 12 + 'px';
 			ship.style.top = ev.clientY - 12 + 'px';
 			L.DomUtil.setPosition(ship, L.point(0, 0));
-			ship.classList.remove('hidden');
 			// console.log('mousedown', ev);
 		});
 
 		const draggable = new L.Draggable(ship, bNode);
 		draggable
+			.on('dragstart', ev => {
+				ship.classList.remove('hidden');
+			})
 			.on('dragend', ev => {
 				// console.log('dddd', ev);
 				const map = mapCont._map;
@@ -57,10 +60,10 @@ export const prepareNodes = () => {
 				dragStartTarget._cnt = _cnt;
 				const title = dragStartTarget.innerHTML + '-' + _cnt;
 				node.innerHTML = title;
-				L.DomEvent.on(node, 'click', (ev) => {
+				const setCurrent = (tNode) => {
 					targetsNode._current = undefined;
 					[...targetsNode.childNodes].forEach((it, i) => {
-						if (it === ev.target && !it.classList.contains('current')) {
+						if (it === tNode && !it.classList.contains('current')) {
 							it.classList.add('current');
 							targetsNode._current = i;
 							playButton.classList.remove('disabled');
@@ -68,13 +71,21 @@ export const prepareNodes = () => {
 							it.classList.remove('current');
 						}
 					});
-					// if (targetsNode._current !== undefined) {
-						map._refreshCurves(targetsNode._current === undefined);
-					// }
+					map._refreshCurves(targetsNode._current === undefined);
+				};
+				L.DomEvent.on(node, 'click', ev => {
+					setCurrent(ev.target);
 				});
 
 				targetsNode._current = targetsNode._targets.length;
-				targetsNode._targets.push(L.marker(latlng, {icon: myIcon, title: title}).addTo(map));
+				targetsNode._targets.push(
+					L.marker(latlng, {icon: myIcon, title: title, _node: node, draggable: true}).on('dragend', ev => {
+						console.log('drag', ev);
+						let _node = ev.target.options._node;
+						_node.classList.remove('current');
+						setCurrent(_node);
+					}).addTo(map)
+				);
 				map._refreshCurves();
 				playButton.classList.remove('disabled');
 				chkCurent(targetsNode);

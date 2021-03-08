@@ -26,15 +26,13 @@ html, body {
 	display: block;
 }
 .leftMenu {
+	user-select: none;
 	display: none;
     margin-left: 20px;
     margin-right: 20px;
     width: 250px;
     border: 1px solid;
     position: absolute;
-/*
-	width: 0px;
-     height: 100%; */
     left: 0px;
 	z-index: 555;
     overflow: hidden;
