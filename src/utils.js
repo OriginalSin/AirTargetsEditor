@@ -1,5 +1,6 @@
 import L from 'leaflet';
 
+export const AMPLITUDE = 0.1;
 export const CONTROL_POINTS = [[45.213004,-11.25],[40.178873,11.25],[47.517201,20.566406],[44.715514,27.949219],[47.398349,49.746094]];
 
 const types = ['Aircraft', 'Helicopter', 'Cruise missile', 'Drone'];

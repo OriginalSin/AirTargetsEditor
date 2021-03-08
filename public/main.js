@@ -16405,8 +16405,8 @@
     })(L);
 
     /*
-     * Leaflet.curve v0.1.0 - a plugin for Leaflet mapping library. https://github.com/elfalem/Leaflet.curve
-     * (c) elfalem 2015
+     * Leaflet.curve v0.7.0 - a plugin for Leaflet mapping library. https://github.com/elfalem/Leaflet.curve
+     * (c) elfalem 2015-2020
      */
 
     /*
@@ -16418,6 +16418,18 @@
         L.setOptions(this, options);
 
         this._setPath(path);
+      },
+      // Added to follow the naming convention of L.Polyline and other Leaflet component classes:
+      // (https://leafletjs.com/reference-1.6.0.html#polyline-setlatlngs)
+      setLatLngs: function (path) {
+        return this.setPath(path);
+      },
+      _updateBounds: function () {
+        var tolerance = this._clickTolerance();
+
+        var tolerancePoint = new L.Point(tolerance, tolerance); //_pxBounds is critical for canvas renderer, used to determine area that needs redrawing
+
+        this._pxBounds = new L.Bounds([this._rawPxBounds.min.subtract(tolerancePoint), this._rawPxBounds.max.add(tolerancePoint)]);
       },
       getPath: function () {
         return this._coords;
@@ -16438,9 +16450,10 @@
         var bound = new L.LatLngBounds();
         var lastPoint;
         var lastCommand;
+        var coord;
 
         for (var i = 0; i < this._coords.length; i++) {
-          var coord = this._coords[i];
+          coord = this._coords[i];
 
           if (typeof coord == 'string' || coord instanceof String) {
             lastCommand = coord;
@@ -16510,20 +16523,28 @@
 
         return bound;
       },
-      //TODO: use a centroid algorithm instead
       getCenter: function () {
         return this._bounds.getCenter();
       },
+      // _update() is invoked by Path._reset()
       _update: function () {
         if (!this._map) {
           return;
-        }
+        } // TODO: consider implementing this._clipPoints(); and this._simplifyPoints(); to improve performance
+
 
         this._updatePath();
       },
       _updatePath: function () {
-        this._renderer._updatecurve(this);
+        // the following can be thought of as this._renderer.updateCurve() in both SVG/Canvas renderers
+        // similar to Canvas._updatePoly(), Canvas._updateCircle(), etc...
+        if (this._usingCanvas) {
+          this._updateCurveCanvas();
+        } else {
+          this._updateCurveSvg();
+        }
       },
+      //_project() is invoked by Path._reset()
       _project: function () {
         var coord, lastCoord, curCommand, curPoint;
         this._points = [];
@@ -16557,16 +16578,16 @@
             this._points.push(curPoint);
           }
         }
-      }
-    });
 
-    L.curve = function (path, options) {
-      return new L.Curve(path, options);
-    };
+        if (this._bounds.isValid()) {
+          var northWestLayerPoint = this._map.latLngToLayerPoint(this._bounds.getNorthWest());
 
-    L.SVG.include({
-      _updatecurve: function (layer) {
-        this._setPath(layer, this._curvePointsToPath(layer._points));
+          var southEastLayerPoint = this._map.latLngToLayerPoint(this._bounds.getSouthEast());
+
+          this._rawPxBounds = new L.Bounds(northWestLayerPoint, southEastLayerPoint);
+
+          this._updateBounds();
+        }
       },
       _curvePointsToPath: function (points) {
         var point,
@@ -16597,16 +16618,354 @@
         }
 
         return str || 'M0 0';
+      },
+      beforeAdd: function (map) {
+        L.Path.prototype.beforeAdd.call(this, map);
+        this._usingCanvas = this._renderer instanceof L.Canvas;
+
+        if (this._usingCanvas) {
+          this._pathSvgElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        }
+      },
+      onAdd: function (map) {
+        if (this._usingCanvas) {
+          // determine if dash array is set by user
+          this._canvasSetDashArray = !this.options.dashArray;
+        }
+
+        L.Path.prototype.onAdd.call(this, map); // calls _update()
+
+        if (this._usingCanvas) {
+          if (this.options.animate && typeof TWEEN === 'object') {
+            this._normalizeCanvasAnimationOptions();
+
+            this._tweenedObject = {
+              offset: this._pathSvgElement.getTotalLength()
+            };
+            this._tween = new TWEEN.Tween(this._tweenedObject).to({
+              offset: 0
+            }, this.options.animate.duration) // difference of behavior with SVG, delay occurs on every iteration
+            .delay(this.options.animate.delay).repeat(this.options.animate.iterations - 1).onComplete(function (scope) {
+              return function () {
+                scope._canvasAnimating = false;
+              };
+            }(this)).start();
+            this._canvasAnimating = true;
+
+            this._animateCanvas();
+          } else {
+            this._canvasAnimating = false;
+          }
+        } else {
+          if (this.options.animate && this._path.animate) {
+            var length = this._svgSetDashArray();
+
+            this._path.animate([{
+              strokeDashoffset: length
+            }, {
+              strokeDashoffset: 0
+            }], this.options.animate);
+          }
+        }
+      },
+      // SVG specific logic
+      _updateCurveSvg: function () {
+        this._renderer._setPath(this, this._curvePointsToPath(this._points));
+
+        if (this.options.animate) {
+          this._svgSetDashArray();
+        }
+      },
+      _svgSetDashArray: function () {
+        var path = this._path;
+        var length = path.getTotalLength();
+
+        if (!this.options.dashArray) {
+          path.style.strokeDasharray = length + ' ' + length;
+        }
+
+        return length;
+      },
+      // Needed by the `Canvas` renderer for interactivity
+      _containsPoint: function (layerPoint) {
+        return this._bounds.contains(this._map.layerPointToLatLng(layerPoint));
+      },
+      // Canvas specific logic below here
+      _normalizeCanvasAnimationOptions: function () {
+        var opts = {
+          delay: 0,
+          duration: 0,
+          iterations: 1
+        };
+
+        if (typeof this.options.animate == "number") {
+          opts.duration = this.options.animate;
+        } else {
+          if (this.options.animate.duration) {
+            opts.duration = this.options.animate.duration;
+          }
+
+          if (this.options.animate.delay) {
+            opts.delay = this.options.animate.delay;
+          }
+
+          if (this.options.animate.iterations) {
+            opts.iterations = this.options.animate.iterations;
+          }
+        }
+
+        this.options.animate = opts;
+      },
+      _updateCurveCanvas: function () {
+        var pathString = this._curvePointsToPath(this._points);
+
+        this._pathSvgElement.setAttribute('d', pathString);
+
+        if (this.options.animate && typeof TWEEN === 'object' && this._canvasSetDashArray) {
+          this.options.dashArray = this._pathSvgElement.getTotalLength() + '';
+
+          this._renderer._updateDashArray(this);
+        }
+
+        this._curveFillStroke(new Path2D(pathString), this._renderer._ctx);
+      },
+      _animateCanvas: function () {
+        TWEEN.update(); // clear out area and re-render all layers
+
+        this._renderer._updatePaths();
+
+        if (this._canvasAnimating) {
+          this._animationFrameId = L.Util.requestAnimFrame(this._animateCanvas, this);
+        }
+      },
+      // similar to Canvas._fillStroke(ctx, layer)
+      _curveFillStroke: function (path2d, ctx) {
+        ctx.lineDashOffset = this._canvasAnimating ? this._tweenedObject.offset : 0.0;
+        var options = this.options;
+
+        if (options.fill) {
+          ctx.globalAlpha = options.fillOpacity;
+          ctx.fillStyle = options.fillColor || options.color;
+          ctx.fill(path2d, options.fillRule || 'evenodd');
+        }
+
+        if (options.stroke && options.weight !== 0) {
+          if (ctx.setLineDash) {
+            ctx.setLineDash(this.options && this.options._dashArray || []);
+          }
+
+          ctx.globalAlpha = options.opacity;
+          ctx.lineWidth = options.weight;
+          ctx.strokeStyle = options.color;
+          ctx.lineCap = options.lineCap;
+          ctx.lineJoin = options.lineJoin;
+          ctx.stroke(path2d);
+        }
+      },
+      // path tracing logic below here
+      trace: function (t) {
+        // initially map is undefined, but then null if curve was added and removed
+        if (this._map === undefined || this._map === null) {
+          return [];
+        }
+
+        t = t.filter(function (element) {
+          return element >= 0 && element <= 1;
+        });
+        var point, curCommand, curStartPoint, curEndPoint;
+        var p1, p2, p3;
+        var samples = [];
+
+        for (var i = 0; i < this._points.length; i++) {
+          point = this._points[i];
+
+          if (typeof point == 'string' || point instanceof String) {
+            curCommand = point;
+
+            if (curCommand == 'Z') {
+              samples = samples.concat(this._linearTrace(t, curEndPoint, curStartPoint));
+            }
+          } else {
+            switch (curCommand) {
+              case 'M':
+                curStartPoint = point;
+                curEndPoint = point;
+                break;
+
+              case 'L':
+              case 'H':
+              case 'V':
+                samples = samples.concat(this._linearTrace(t, curEndPoint, point));
+                curEndPoint = point;
+                break;
+
+              case 'C':
+                p1 = point;
+                p2 = this._points[++i];
+                p3 = this._points[++i];
+                samples = samples.concat(this._cubicTrace(t, curEndPoint, p1, p2, p3));
+                curEndPoint = p3;
+                break;
+
+              case 'S':
+                p1 = this._reflectPoint(p2, curEndPoint);
+                p2 = point;
+                p3 = this._points[++i];
+                samples = samples.concat(this._cubicTrace(t, curEndPoint, p1, p2, p3));
+                curEndPoint = p3;
+                break;
+
+              case 'Q':
+                p1 = point;
+                p2 = this._points[++i];
+                samples = samples.concat(this._quadraticTrace(t, curEndPoint, p1, p2));
+                curEndPoint = p2;
+                break;
+
+              case 'T':
+                p1 = this._reflectPoint(p1, curEndPoint);
+                p2 = point;
+                samples = samples.concat(this._quadraticTrace(t, curEndPoint, p1, p2));
+                curEndPoint = p2;
+                break;
+            }
+          }
+        }
+
+        return samples;
+      },
+      _linearTrace: function (t, p0, p1) {
+        return t.map(interval => {
+          var x = this._singleLinearTrace(interval, p0.x, p1.x);
+
+          var y = this._singleLinearTrace(interval, p0.y, p1.y);
+
+          return this._map.layerPointToLatLng([x, y]);
+        });
+      },
+      _quadraticTrace: function (t, p0, p1, p2) {
+        return t.map(interval => {
+          var x = this._singleQuadraticTrace(interval, p0.x, p1.x, p2.x);
+
+          var y = this._singleQuadraticTrace(interval, p0.y, p1.y, p2.y);
+
+          return this._map.layerPointToLatLng([x, y]);
+        });
+      },
+      _cubicTrace: function (t, p0, p1, p2, p3) {
+        return t.map(interval => {
+          var x = this._singleCubicTrace(interval, p0.x, p1.x, p2.x, p3.x);
+
+          var y = this._singleCubicTrace(interval, p0.y, p1.y, p2.y, p3.y);
+
+          return this._map.layerPointToLatLng([x, y]);
+        });
+      },
+      _singleLinearTrace: function (t, p0, p1) {
+        return p0 + t * (p1 - p0);
+      },
+      _singleQuadraticTrace: function (t, p0, p1, p2) {
+        var oneMinusT = 1 - t;
+        return Math.pow(oneMinusT, 2) * p0 + 2 * oneMinusT * t * p1 + Math.pow(t, 2) * p2;
+      },
+      _singleCubicTrace: function (t, p0, p1, p2, p3) {
+        var oneMinusT = 1 - t;
+        return Math.pow(oneMinusT, 3) * p0 + 3 * Math.pow(oneMinusT, 2) * t * p1 + 3 * oneMinusT * Math.pow(t, 2) * p2 + Math.pow(t, 3) * p3;
+      },
+      _reflectPoint: function (point, over) {
+        x = over.x + (over.x - point.x);
+        y = over.y + (over.y - point.y);
+        return L.point(x, y);
       }
     });
 
-    const CONTROL_POINTS = [[45.213004, -11.25], [40.178873, 11.25], [47.517201, 20.566406], [44.715514, 27.949219], [47.398349, 49.746094]];
+    L.curve = function (path, options) {
+      return new L.Curve(path, options);
+    };
 
-    window.addEventListener('load', async () => {
+    const AMPLITUDE = 0.1;
+    const CONTROL_POINTS = [[45.213004, -11.25], [40.178873, 11.25], [47.517201, 20.566406], [44.715514, 27.949219], [47.398349, 49.746094]];
+    const types = ['Aircraft', 'Helicopter', 'Cruise missile', 'Drone'];
+    const prepareNodes = () => {
       const cont = document.body;
       const header = leafletSrc.DomUtil.create('div', 'header', cont);
-      const leftMenu = leafletSrc.DomUtil.create('div', 'leftMenu', cont);
-      const mapCont = leafletSrc.DomUtil.create('div', 'map', cont);
+      const leftMenu = leafletSrc.DomUtil.create('div', 'leftMenu opened', cont);
+      const title = leafletSrc.DomUtil.create('div', 'title', leftMenu);
+      title.innerHTML = 'Target types';
+      const lBody = leafletSrc.DomUtil.create('div', 'body', leftMenu);
+      const targetsTitle = leafletSrc.DomUtil.create('div', 'title', leftMenu);
+      targetsTitle.innerHTML = 'Targets';
+      const targetsNode = leafletSrc.DomUtil.create('div', 'bodyTargets', leftMenu);
+      targetsNode._targets = [];
+      targetsNode._current;
+      let ship = leafletSrc.DomUtil.create('div', 'icon ship hidden', cont);
+      var myIcon = leafletSrc.icon({
+        iconSize: [24, 24],
+        iconUrl: './ship.svg'
+      });
+
+      const chkCurent = pNode => {
+        const _current = pNode._current;
+        [...pNode.childNodes].forEach((it, i) => {
+          it.classList[i === _current ? 'add' : 'remove']('current');
+        });
+      };
+
+      types.map(key => {
+        const bNode = leafletSrc.DomUtil.create('div', '', lBody);
+        bNode.innerHTML = key;
+        leafletSrc.DomEvent.on(bNode, 'mousedown', ev => {
+          ship.style.left = ev.clientX - 12 + 'px';
+          ship.style.top = ev.clientY - 12 + 'px';
+          leafletSrc.DomUtil.setPosition(ship, leafletSrc.point(0, 0));
+          ship.classList.remove('hidden'); // console.log('mousedown', ev);
+        });
+        const draggable = new leafletSrc.Draggable(ship, bNode);
+        draggable.on('dragend', ev => {
+          // console.log('dddd', ev);
+          const map = mapCont._map;
+          ship.classList.add('hidden');
+          const target = ev.target;
+
+          const p = target._newPos.add(target._startPoint).subtract(leafletSrc.point(301, 42));
+
+          const latlng = map.containerPointToLatLng(p);
+          const node = leafletSrc.DomUtil.create('div', '', targetsNode);
+          const dragStartTarget = ev.target._dragStartTarget;
+          let _cnt = dragStartTarget._cnt;
+          _cnt = !_cnt ? 1 : ++_cnt;
+          dragStartTarget._cnt = _cnt;
+          const title = dragStartTarget.innerHTML + '-' + _cnt;
+          node.innerHTML = title;
+          leafletSrc.DomEvent.on(node, 'click', ev => {
+            targetsNode._current = undefined;
+            [...targetsNode.childNodes].forEach((it, i) => {
+              if (it === ev.target && !it.classList.contains('current')) {
+                it.classList.add('current');
+                targetsNode._current = i;
+                playButton.classList.remove('disabled');
+              } else {
+                it.classList.remove('current');
+              }
+            }); // if (targetsNode._current !== undefined) {
+
+            map._refreshCurves(targetsNode._current === undefined); // }
+
+          });
+          targetsNode._current = targetsNode._targets.length;
+
+          targetsNode._targets.push(leafletSrc.marker(latlng, {
+            icon: myIcon,
+            title: title
+          }).addTo(map));
+
+          map._refreshCurves();
+
+          playButton.classList.remove('disabled');
+          chkCurent(targetsNode);
+        }).enable();
+      });
+      const mapCont = leafletSrc.DomUtil.create('div', 'map opened', cont);
       const leftCont = leafletSrc.DomUtil.create('span', 'left', header);
       leafletSrc.DomEvent.on(leafletSrc.DomUtil.create('span', 'icon sidebar', leftCont), 'click', ev => {
         const cList = leftMenu.classList;
@@ -16620,15 +16979,38 @@
         }
       });
       const centerCont = leafletSrc.DomUtil.create('span', 'center', header);
-      const playButton = leafletSrc.DomUtil.create('span', 'icon play', centerCont);
-      const rightCont = leafletSrc.DomUtil.create('span', 'right', header);
-      const playButton1 = leafletSrc.DomUtil.create('span', 'icon play', rightCont);
-      const map = leafletSrc.map(mapCont, {}).setView([42.779275360241904, 17.666015625000004], 4);
+      const playButton = leafletSrc.DomUtil.create('span', 'icon play disabled', centerCont);
+      playButton.title = 'Просмотр';
+      const pauseButton = leafletSrc.DomUtil.create('span', 'icon pause disabled', centerCont);
+      pauseButton.title = 'Пауза';
+      const rightCont = leafletSrc.DomUtil.create('span', 'right', header); // const playButton1 = L.DomUtil.create('span', 'icon play', rightCont);
+
+      leafletSrc.DomEvent.on(pauseButton, 'click', ev => {
+        const cList = pauseButton.classList;
+
+        if (cList.contains('run')) {
+          cList.remove('run');
+        } else {
+          cList.add('run');
+        }
+      });
+      return {
+        mapCont: mapCont,
+        playButton: playButton,
+        pauseButton: pauseButton,
+        targets: targetsNode
+      };
+    };
+
+    window.addEventListener('load', async () => {
+      const nodes = prepareNodes();
+      const map = leafletSrc.map(nodes.mapCont, {}).setView([42.779275360241904, 17.666015625000004], 4);
+      nodes.mapCont._map = map;
       window._test = map;
       leafletSrc.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
       }).addTo(map);
-      const latlngs = CONTROL_POINTS;
+      let latlngs = CONTROL_POINTS;
       map.gmxDrawing.add(leafletSrc.polyline(latlngs), {
         lineStyle: {
           dashArray: [5, 5],
@@ -16638,49 +17020,114 @@
           size: 20,
           fillColor: 'red'
         }
+      }).on('edit', ev => {
+        latlngs = ev.object.rings[0].ring._getLatLngsArr().map(p => [p.lat, p.lng]);
+        refreshCurves();
       });
-      const curveArr = ['M', latlngs[0]];
+      let pathOne;
 
-      for (let i = 0, len = latlngs.length - 1; i < len; i++) {
-        let p = latlngs[i];
-        let p1 = latlngs[i + 1];
-        curveArr.push('C');
-        curveArr.push([p[0], p[1] + 2]);
-        curveArr.push([p1[0], p1[1] - 2]);
-        curveArr.push(p1);
+      function refreshCurves(flag) {
+        if (pathOne) {
+          map.removeLayer(pathOne);
+        }
+
+        if (flag) {
+          nodes.playButton.classList.add('disabled');
+          return;
+        }
+
+        const target = nodes.targets._targets[nodes.targets._current]; // const target = nodes.targets._targets[nodes.targets._targets.length - 1];
+
+        let first = [];
+
+        if (target) {
+          let latLng = target.getLatLng();
+          first = [[latLng.lat, latLng.lng]];
+        }
+
+        const arr = first.concat(latlngs);
+        let p0 = arr[0];
+        const curveArr = ['M', p0];
+
+        for (let i = 0, len = arr.length - 1; i < len; i++) {
+          let p1 = arr[i];
+          let p2 = arr[i + 1];
+          let p3 = i === len - 1 ? p2 : arr[i + 2];
+          curveArr.push('C');
+          curveArr.push([p1[0] + AMPLITUDE * (p2[0] - p0[0]), p1[1] + AMPLITUDE * (p2[1] - p0[1])]);
+          curveArr.push([p2[0] - AMPLITUDE * (p3[0] - p1[0]), p2[1] - AMPLITUDE * (p3[1] - p1[1])]);
+          curveArr.push(p2);
+          p0 = p1;
+        }
+
+        pathOne = leafletSrc.curve(curveArr, {
+          dashArray: '5',
+          animate: {
+            duration: 3000,
+            iterations: Infinity,
+            delay: 1000
+          } // ,
+          // renderer: canvasRenderer
+
+        }).addTo(map);
       }
 
-      var pathOne = leafletSrc.curve(curveArr).addTo(map);
-      /*
-      var customPane = map.createPane("customPane");
-      var canvasRenderer = L.canvas({pane:"customPane"});
-      customPane.style.zIndex = 399; // put just behind the standard overlay pane which is at 400
-      
-      // var pathOne = L.curve(['M',[50.14874640066278,14.106445312500002],
-      					   // 'Q',[51.67255514839676,16.303710937500004],
-      						   // [50.14874640066278,18.676757812500004],
-      					   // 'T',[49.866316729538674,25.0927734375]], {
-      // квадратичная кривая Безье B(t)=(1-t)^2*P0+2*t*(1-t)*P1+t^2*P2, t=0..1
-      // B(0)=P0, B(1)=P2, B'(0)=-2*P0+2*P1, B'(1)=-2*P1+2*P2
-      // P[1]=P0[1]+B'(0)*(P[0]-P0[0])=P2[1]+B'(1)*(P[0]-P2[0])
-      // P[0]=(P0[1]-B'(0)*P0[0]-P2[1]+B'(1)*P2[0])/(B'(1)-B'(0))
-      // P[1]= P2[1]-B'(1)*P2[0]+B'(1)*(P0[1]-B'(0)*P0[0]-P2[1]+B'(1)*P2[0])/(B'(1)-B'(0))
-      // = (P2[1]-B'(1)*P2[0]))
-      
-      var pathOne = L.curve([
-      	'M', latlngs[0],
-      	'C', [latlngs[0][0], latlngs[0][1] + 2], [latlngs[1][0], latlngs[1][1] - 2], latlngs[1],
-      	'C', [latlngs[1][0], latlngs[1][1] + 2], [latlngs[2][0], latlngs[2][1] - 2], latlngs[2],
-      	'C', [latlngs[2][0], latlngs[2][1] + 2], [latlngs[3][0], latlngs[3][1] - 2], latlngs[3],
-      	'C', [latlngs[3][0], latlngs[3][1] + 2], [latlngs[4][0], latlngs[4][1] - 2], latlngs[4]
-      	//'Q', latlngs[3], latlngs[4], latlngs[2]
-      	//'T', latlngs[4]
-         ], {
-      	   animate: 3000
-      	   // ,
-      	   // renderer: canvasRenderer
-         }).addTo(map);
-      */
+      map._refreshCurves = refreshCurves;
+      let traceArr = [];
+
+      function traceCurves() {
+        if (pathOne) {
+          // const target = targets[0];
+          const arr = [];
+
+          for (let i = 0; i <= 1; i += 0.01) {
+            arr.push(i);
+          }
+
+          traceArr = [];
+          pathOne.trace(arr).forEach(i => {
+            traceArr.push(i);
+          });
+        }
+      }
+
+      let intId;
+
+      const disable = cList => {
+        console.log('ddd');
+        nodes.pauseButton.classList.add('disabled');
+        cList.remove('run');
+        clearInterval(intId);
+      };
+
+      leafletSrc.DomEvent.on(nodes.playButton, 'click', ev => {
+        const target = nodes.targets._targets[nodes.targets._current]; // const target = nodes.targets._targets[nodes.targets._targets.length - 1];
+
+        const cList = ev.target.classList;
+
+        if (cList.contains('run')) {
+          disable(cList);
+        } else {
+          cList.add('run');
+          nodes.pauseButton.classList.remove('disabled');
+          traceCurves(); // let time = 0;
+
+          intId = setInterval(() => {
+            if (!nodes.pauseButton.classList.contains('run')) {
+              let latlng = traceArr.shift();
+
+              if (latlng) {
+                target.setLatLng(latlng);
+              } else {
+                disable(cList); // console.log('ddd', latlng);
+                // nodes.pauseButton.classList.add('disable');
+                // cList.remove('run');
+                // clearInterval(intId);
+              }
+            }
+          }, 100);
+        }
+      });
     });
 
 }());
