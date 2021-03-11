@@ -1,4 +1,6 @@
 import L from 'leaflet';
+import 'leaflet-rotatedmarker/leaflet.rotatedMarker.js';
+import 'leaflet-geometryutil/src/leaflet.geometryutil.js';
 
 export const AMPLITUDE = 0.1;
 export const CONTROL_POINTS = [[45.213004,-11.25],[40.178873,11.25],[47.517201,20.566406],[44.715514,27.949219],[47.398349,49.746094]];
@@ -21,6 +23,7 @@ export const prepareNodes = () => {
 	let ship = L.DomUtil.create('div', 'icon ship hidden', cont);
 	var myIcon = L.icon({
 		iconSize: [24, 24],
+		iconAnchor: [12, 12],
 		iconUrl: './ship.svg'
 	});
 	const chkCurent = pNode => {
@@ -78,15 +81,40 @@ export const prepareNodes = () => {
 				});
 
 				targetsNode._current = targetsNode._targets.length;
-				targetsNode._targets.push(
-					L.marker(latlng, {icon: myIcon, title: title, _blatlng: latlng, _node: node, draggable: true}).on('dragend', ev => {
-						// console.log('drag', ev);
+				let item = {
+					target: L.marker(latlng, {icon: myIcon, rotationAngle: 45, title: title, _blatlng: latlng, _node: node, draggable: true}).on('drag', ev => {
+						console.log('drag', ev);
 						let _node = ev.target.options._node;
 						_node.classList.remove('current');
 						setCurrent(_node);
+						if (item.trace)	{
+							let ring = item.trace.rings[0].ring;
+							let arr = ring._getLatLngsArr();
+							arr[0] = ev.latlng;
+							ring.setLatLngs(arr);
+							// let geoJson = item.trace.toGeoJSON();
+							// geoJson.geometry.coordinates[0] = ev.target._latlng;
+							// item.trace.setGeoJSON(geoJson);
+							//item.trace.rings[0].ring[0] = ev.target._latlng;
+						}
+
 					}).addTo(map)
-				);
-				map._refreshCurves();
+				};
+				targetsNode._targets.push(item);
+				map.gmxDrawing.once('add', ev => {
+					console.log('add', ev);
+					item.trace = ev.object;
+					//getAngle
+				});
+				map.gmxDrawing.create('Polyline', {
+					lineStyle: {dashArray: [5, 5], color: 'red'},
+					pointStyle: {size:10, fillColor: 'red'}
+				});
+				map.fire('click', {
+					latlng: latlng
+				});
+
+				//map._refreshCurves();
 				playButton.classList.remove('disabled');
 				chkCurent(targetsNode);
 			})
@@ -128,4 +156,8 @@ export const prepareNodes = () => {
 		targets: targetsNode
 	};
 
+}
+
+export const getAngle = (a, b) => {
+	return Math.PI / 2 + Math.atan2(b[1] - a[1], a[0] - b[0]);
 }

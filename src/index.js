@@ -35,12 +35,15 @@ window.addEventListener('load', async () => {
 			nodes.playButton.classList.add('disabled');
 			return;
 		}
-		const target = nodes.targets._targets[nodes.targets._current];
+		const item = nodes.targets._targets[nodes.targets._current];
 		// const target = nodes.targets._targets[nodes.targets._targets.length - 1];
 		let first = [];
-		if (target) {
-			let latLng = target.getLatLng();
-			first = [[latLng.lat, latLng.lng]];
+		// if (item.target) {
+			// let latLng = item.target.getLatLng();
+			// first = [[latLng.lat, latLng.lng]];
+		// }
+		if (item.trace) {
+			latlngs = item.trace.rings[0].ring._getLatLngsArr().map(p => [p.lat, p.lng]);
 		}
 		const arr = first.concat(latlngs);
 		let p0 = arr[0];
@@ -93,8 +96,9 @@ window.addEventListener('load', async () => {
 	}
 
 	L.DomEvent.on(nodes.playButton, 'click', (ev) => {
-		const target = nodes.targets._targets[nodes.targets._current];
-		if (target) {
+		const item = nodes.targets._targets[nodes.targets._current];
+		if (item) {
+			const target = item.target;
 			target.setLatLng(target.options._blatlng);
 			const cList = ev.target.classList;
 			if (cList.contains('run')) {
@@ -102,12 +106,22 @@ window.addEventListener('load', async () => {
 			} else {
 				cList.add('run');
 				nodes.pauseButton.classList.remove('disabled');
+				if (!pathOne) { refreshCurves(); }
 				traceCurves();
 				intId = setInterval(() => {
 					if (!nodes.pauseButton.classList.contains('run')) {
 						let latlng = traceArr.shift();
 						if (latlng) {
 							target.setLatLng(latlng);
+							if (traceArr[0]) {
+								let angle = L.GeometryUtil.angle(map, latlng, traceArr[0]);
+								if (angle !== 90) {
+									target.setRotationAngle(angle);
+									//angle = L.GeometryUtil.angle(map, latlng, traceArr[0]);
+								}
+								
+		console.log('ddd', angle, latlng, traceArr[0]);
+							}
 						} else {
 							disable(cList);
 						}
