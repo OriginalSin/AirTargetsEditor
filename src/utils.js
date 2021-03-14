@@ -3,12 +3,13 @@ import 'leaflet-rotatedmarker/leaflet.rotatedMarker.js';
 import 'leaflet-geometryutil/src/leaflet.geometryutil.js';
 
 export const AMPLITUDE = 0.1;
-export const CONTROL_POINTS = [[45.213004,-11.25],[40.178873,11.25],[47.517201,20.566406],[44.715514,27.949219],[47.398349,49.746094]];
+export const DELAY = 0.01;
+// export const CONTROL_POINTS = [[45.213004,-11.25],[40.178873,11.25],[47.517201,20.566406],[44.715514,27.949219],[47.398349,49.746094]];
 
 const types = ['Aircraft', 'Helicopter', 'Cruise missile', 'Drone'];
 
 export const prepareNodes = () => {
-		const cont = document.body;
+	const cont = document.body;
 	const header = L.DomUtil.create('div', 'header', cont);
 	const leftMenu = L.DomUtil.create('div', 'leftMenu opened', cont);
 	const title = L.DomUtil.create('div', 'title', leftMenu);
@@ -26,13 +27,6 @@ export const prepareNodes = () => {
 		iconAnchor: [12, 12],
 		iconUrl: './ship.svg'
 	});
-	const chkCurent = pNode => {
-		const _current = pNode._current;
-		[...pNode.childNodes].forEach((it, i) => {
-			it.classList[i === _current ? 'add' : 'remove']('current');
-		});
-	}
-
 	types.map(key => {
 		const bNode = L.DomUtil.create('div', '', lBody);
 		bNode.innerHTML = key;
@@ -41,7 +35,6 @@ export const prepareNodes = () => {
 			ship.style.left = ev.clientX - 12 + 'px';
 			ship.style.top = ev.clientY - 12 + 'px';
 			L.DomUtil.setPosition(ship, L.point(0, 0));
-			// console.log('mousedown', ev);
 		});
 
 		const draggable = new L.Draggable(ship, bNode);
@@ -63,49 +56,32 @@ export const prepareNodes = () => {
 				dragStartTarget._cnt = _cnt;
 				const title = dragStartTarget.innerHTML + '-' + _cnt;
 				node.innerHTML = title;
-				const setCurrent = (tNode) => {
-					targetsNode._current = undefined;
-					[...targetsNode.childNodes].forEach((it, i) => {
-						if (it === tNode && !it.classList.contains('current')) {
-							it.classList.add('current');
-							targetsNode._current = i;
-							playButton.classList.remove('disabled');
-						} else {
-							it.classList.remove('current');
-						}
-					});
-					map._refreshCurves(targetsNode._current === undefined);
-				};
-				L.DomEvent.on(node, 'click', ev => {
-					setCurrent(ev.target);
-				});
 
 				targetsNode._current = targetsNode._targets.length;
 				let item = {
 					target: L.marker(latlng, {icon: myIcon, rotationAngle: 45, title: title, _blatlng: latlng, _node: node, draggable: true}).on('drag', ev => {
-						console.log('drag', ev);
-						let _node = ev.target.options._node;
+						let target = ev.target;
+						target.options._blatlng = ev.latlng;
+						let _node = target.options._node;
 						_node.classList.remove('current');
-						setCurrent(_node);
-						if (item.trace)	{
+						if (item.trace && item.trace.rings[0])	{
 							let ring = item.trace.rings[0].ring;
 							let arr = ring._getLatLngsArr();
 							arr[0] = ev.latlng;
 							ring.setLatLngs(arr);
-							// let geoJson = item.trace.toGeoJSON();
-							// geoJson.geometry.coordinates[0] = ev.target._latlng;
-							// item.trace.setGeoJSON(geoJson);
-							//item.trace.rings[0].ring[0] = ev.target._latlng;
 						}
 
 					}).addTo(map)
 				};
 				targetsNode._targets.push(item);
-				map.gmxDrawing.once('add', ev => {
-					console.log('add', ev);
-					item.trace = ev.object;
-					//getAngle
-				});
+				map.gmxDrawing
+					.once('add', ev => {
+						item.trace = ev.object;
+					})
+					.once('drawstop', ev => {
+						playButton.classList.remove('disabled');
+					});
+				
 				map.gmxDrawing.create('Polyline', {
 					lineStyle: {dashArray: [5, 5], color: 'red'},
 					pointStyle: {size:10, fillColor: 'red'}
@@ -113,10 +89,6 @@ export const prepareNodes = () => {
 				map.fire('click', {
 					latlng: latlng
 				});
-
-				//map._refreshCurves();
-				playButton.classList.remove('disabled');
-				chkCurent(targetsNode);
 			})
 			.enable();
 	});
@@ -137,25 +109,22 @@ export const prepareNodes = () => {
 	playButton.title = 'Просмотр';
 	const pauseButton = L.DomUtil.create('span', 'icon pause disabled', centerCont);
 	pauseButton.title = 'Пауза';
+	const stopButton = L.DomUtil.create('span', 'icon stop disabled', centerCont);
+	stopButton.title = 'Стоп';
 	const rightCont = L.DomUtil.create('span', 'right', header);
-	// const playButton1 = L.DomUtil.create('span', 'icon play', rightCont);
-
-	L.DomEvent.on(pauseButton, 'click', (ev) => {
-		const cList = pauseButton.classList;
-		if (cList.contains('run')) {
-			cList.remove('run');
-		} else {
-			cList.add('run');
-		}
-	});
 
 	return {
 		mapCont: mapCont,
 		playButton: playButton,
 		pauseButton: pauseButton,
+		stopButton: stopButton,
 		targets: targetsNode
 	};
+}
 
+export const getLatLngsArr = (drawingFeature) => {
+	const ring0 = drawingFeature.trace.rings[0];
+	return ring0 ? ring0.ring._getLatLngsArr().map(p => [p.lat, p.lng]) : [];
 }
 
 export const getAngle = (a, b) => {
